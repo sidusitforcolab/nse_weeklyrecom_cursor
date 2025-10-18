@@ -9,8 +9,12 @@ import requests
 from bs4 import BeautifulSoup
 import warnings
 import os
-import joblib
-from nse_data_fetcher import NSEDataFetcher
+import subprocess
+import sys
+
+# Import our custom modules
+from model_utils import ModelPredictor, DataFetcher, ModelManager, PerformanceTracker
+from model_utils import get_nse_symbols, get_sector_mapping, format_currency, format_percentage
 warnings.filterwarnings('ignore')
 
 # Page configuration
@@ -57,51 +61,20 @@ st.markdown("""
 
 class NSEStockAnalyzer:
     def __init__(self):
-        self.nse_symbols = self.get_nse_symbols()
-        self.nse_fetcher = NSEDataFetcher()
-        self.load_ml_model()
-        
-    def get_nse_symbols(self):
-        """Get list of NSE symbols - using a curated list of major stocks"""
-        return [
-            'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'HINDUNILVR.NS',
-            'ICICIBANK.NS', 'KOTAKBANK.NS', 'BHARTIARTL.NS', 'ITC.NS', 'SBIN.NS',
-            'ASIANPAINT.NS', 'MARUTI.NS', 'AXISBANK.NS', 'TITAN.NS', 'NESTLEIND.NS',
-            'ULTRACEMCO.NS', 'WIPRO.NS', 'ONGC.NS', 'POWERGRID.NS', 'NTPC.NS',
-            'TECHM.NS', 'TATAMOTORS.NS', 'SUNPHARMA.NS', 'TATASTEEL.NS', 'BAJFINANCE.NS',
-            'HCLTECH.NS', 'DRREDDY.NS', 'JSWSTEEL.NS', 'TATACONSUM.NS', 'BAJAJFINSV.NS',
-            'COALINDIA.NS', 'GRASIM.NS', 'BRITANNIA.NS', 'EICHERMOT.NS', 'HEROMOTOCO.NS',
-            'CIPLA.NS', 'UPL.NS', 'SHREECEM.NS', 'DIVISLAB.NS', 'BAJAJ-AUTO.NS',
-            'INDUSINDBK.NS', 'APOLLOHOSP.NS', 'ADANIPORTS.NS', 'M&M.NS', 'LT.NS',
-            'BPCL.NS', 'HINDALCO.NS', 'TATAPOWER.NS', 'IOC.NS', 'SBILIFE.NS'
-        ]
+        self.nse_symbols = get_nse_symbols()
+        self.model_predictor = ModelPredictor()
+        self.model_manager = ModelManager()
+        self.performance_tracker = PerformanceTracker()
+        self.sector_mapping = get_sector_mapping()
+        self.load_ml_model_status()
     
     def get_stock_data(self, symbol, period="1mo"):
-        """Fetch stock data from Yahoo Finance"""
-        try:
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period)
-            return data
-        except Exception as e:
-            st.error(f"Error fetching data for {symbol}: {str(e)}")
-            return None
+        """Fetch stock data using DataFetcher utility"""
+        return DataFetcher.get_stock_data(symbol, period)
     
     def calculate_weekly_returns(self, data):
-        """Calculate weekly returns"""
-        if data is None or len(data) < 5:
-            return None
-        
-        # Get last 5 trading days (Monday to Friday)
-        last_5_days = data.tail(5)
-        monday_price = last_5_days.iloc[0]['Close']
-        friday_price = last_5_days.iloc[-1]['Close']
-        
-        weekly_return = ((friday_price - monday_price) / monday_price) * 100
-        return {
-            'monday_price': monday_price,
-            'friday_price': friday_price,
-            'weekly_return': weekly_return
-        }
+        """Calculate weekly returns using DataFetcher utility"""
+        return DataFetcher.calculate_weekly_returns(data)
     
     def get_top_performers(self, n=5):
         """Get top N performing stocks for the previous week"""
@@ -130,88 +103,93 @@ class NSEStockAnalyzer:
         
         return results_df.head(n)
     
-    def load_ml_model(self):
-        """Load the trained ML model if available"""
-        try:
-            if os.path.exists('nse_prediction_model.joblib'):
-                self.model_data = self.nse_fetcher.load_model()
-                st.success("✅ ML Model loaded successfully!")
-            else:
-                st.info("🔄 Training new ML model with 2022 data...")
-                self.train_model_with_2022_data()
-        except Exception as e:
-            st.warning(f"⚠️ Could not load ML model: {str(e)}")
-            self.model_data = None
+    def load_ml_model_status(self):
+        """Load ML model status and information"""
+        self.model_info = self.model_predictor.get_model_info()
+        
+        if self.model_predictor.is_loaded:
+            st.success("✅ ML Model loaded successfully!")
+        else:
+            st.info("🔄 No trained model found. You can train a new model.")
     
-    def train_model_with_2022_data(self):
-        """Train ML model using 2022 NSE data"""
+    def train_new_model(self):
+        """Train a new ML model using the separate training script"""
         try:
-            # Use a subset of stocks for faster training
-            training_stocks = [
-                'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'HINDUNILVR.NS',
-                'ICICIBANK.NS', 'KOTAKBANK.NS', 'BHARTIARTL.NS', 'ITC.NS', 'SBIN.NS'
-            ]
-            
-            with st.spinner("Fetching 2022 historical data and training model..."):
-                # Fetch 2022 data
-                data_2022 = self.nse_fetcher.fetch_2022_data(training_stocks)
+            with st.spinner("Training new ML model with 2022 NSE data..."):
+                # Run the separate training script
+                result = subprocess.run([
+                    sys.executable, 'model_trainer.py',
+                    '--start-date', '2022-01-01',
+                    '--end-date', '2022-12-31'
+                ], capture_output=True, text=True, timeout=300)
                 
-                if data_2022:
-                    # Prepare training data
-                    X, y, feature_columns, combined_data = self.nse_fetcher.prepare_training_data(data_2022)
+                if result.returncode == 0:
+                    st.success("✅ Model trained successfully!")
                     
-                    # Train model
-                    model_results = self.nse_fetcher.train_prediction_model(X, y)
-                    
-                    # Save model
-                    self.nse_fetcher.save_model({
-                        'model': model_results['model'],
-                        'scaler': self.nse_fetcher.scaler,
-                        'feature_columns': feature_columns,
-                        'metrics': model_results['metrics'],
-                        'feature_importance': model_results['feature_importance']
-                    })
-                    
-                    self.model_data = model_results
-                    st.success("✅ Model trained successfully with 2022 NSE data!")
+                    # Reload the model predictor
+                    self.model_predictor = ModelPredictor()
+                    self.model_info = self.model_predictor.get_model_info()
                     
                     # Display training metrics
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("R² Score", f"{model_results['metrics']['r2']:.4f}")
-                    with col2:
-                        st.metric("MAE", f"{model_results['metrics']['mae']:.6f}")
-                    with col3:
-                        st.metric("MSE", f"{model_results['metrics']['mse']:.6f}")
-                        
-                else:
-                    st.error("❌ Could not fetch 2022 data for model training")
-                    self.model_data = None
+                    if self.model_info.get('metrics'):
+                        metrics = self.model_info['metrics'].get('ensemble', {})
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("R² Score", f"{metrics.get('r2', 0):.4f}")
+                        with col2:
+                            st.metric("MAE", f"{metrics.get('mae', 0):.6f}")
+                        with col3:
+                            st.metric("Direction Accuracy", f"{metrics.get('direction_accuracy', 0):.4f}")
                     
+                    st.rerun()
+                else:
+                    st.error(f"❌ Model training failed: {result.stderr}")
+                    
+        except subprocess.TimeoutExpired:
+            st.error("❌ Model training timed out. Please try again.")
         except Exception as e:
             st.error(f"❌ Error training model: {str(e)}")
-            self.model_data = None
+    
+    def run_model_evaluation(self):
+        """Run model evaluation using the separate evaluation script"""
+        try:
+            with st.spinner("Running comprehensive model evaluation..."):
+                result = subprocess.run([
+                    sys.executable, 'model_evaluator.py',
+                    '--output-dir', 'streamlit_evaluation'
+                ], capture_output=True, text=True, timeout=120)
+                
+                if result.returncode == 0:
+                    st.success("✅ Model evaluation completed!")
+                    st.info("📊 Evaluation reports saved to 'streamlit_evaluation' directory")
+                    
+                    # Display some evaluation results
+                    if os.path.exists('streamlit_evaluation'):
+                        eval_files = [f for f in os.listdir('streamlit_evaluation') if f.endswith('.json')]
+                        if eval_files:
+                            latest_eval = sorted(eval_files)[-1]
+                            st.info(f"📄 Latest evaluation: {latest_eval}")
+                else:
+                    st.error(f"❌ Model evaluation failed: {result.stderr}")
+                    
+        except subprocess.TimeoutExpired:
+            st.error("❌ Model evaluation timed out. Please try again.")
+        except Exception as e:
+            st.error(f"❌ Error running evaluation: {str(e)}")
     
     def predict_next_week_performance(self, symbol):
-        """Enhanced prediction using ML model trained on 2022 NSE data"""
+        """Enhanced prediction using ML model or fallback to technical analysis"""
         # Get recent data for prediction
         data = self.get_stock_data(symbol, "3mo")
-        if data is None or len(data) < 50:
-            return self.fallback_prediction(symbol, data)
+        if data is None or len(data) < 20:
+            return None
         
         # Use ML model if available
-        if hasattr(self, 'model_data') and self.model_data is not None:
+        if self.model_predictor.is_loaded:
             try:
-                ml_prediction = self.nse_fetcher.predict_stock_movement(symbol, data)
+                ml_prediction = self.model_predictor.predict_stock_movement(symbol, data)
                 if ml_prediction:
-                    return {
-                        'symbol': ml_prediction['symbol'],
-                        'current_price': ml_prediction['current_price'],
-                        'predicted_return': ml_prediction['predicted_return'],
-                        'direction': ml_prediction['direction'],
-                        'confidence': ml_prediction['confidence'],
-                        'model_type': 'ML Model (2022 NSE Data)'
-                    }
+                    return ml_prediction
             except Exception as e:
                 st.warning(f"ML prediction failed for {symbol}: {str(e)}")
         
@@ -306,15 +284,51 @@ def main():
     # Model status in sidebar
     st.sidebar.markdown("---")
     st.sidebar.subheader("🤖 AI Model Status")
-    if hasattr(analyzer, 'model_data') and analyzer.model_data is not None:
+    
+    if analyzer.model_predictor.is_loaded:
         st.sidebar.success("✅ ML Model Active")
-        if 'metrics' in analyzer.model_data:
-            st.sidebar.metric("Model R²", f"{analyzer.model_data['metrics']['r2']:.3f}")
+        
+        # Display model info
+        if analyzer.model_info:
+            if 'metrics' in analyzer.model_info and 'ensemble' in analyzer.model_info['metrics']:
+                ensemble_metrics = analyzer.model_info['metrics']['ensemble']
+                st.sidebar.metric("Model R²", f"{ensemble_metrics.get('r2', 0):.3f}")
+                st.sidebar.metric("Direction Accuracy", f"{ensemble_metrics.get('direction_accuracy', 0):.3f}")
+            
+            st.sidebar.text(f"Features: {analyzer.model_info.get('feature_count', 0)}")
+            
+            if analyzer.model_info.get('created_at'):
+                created_date = analyzer.model_info['created_at'][:10]  # Just the date part
+                st.sidebar.text(f"Created: {created_date}")
+        
+        # Model management buttons
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("🔄 Retrain", key="retrain_model"):
+                analyzer.train_new_model()
+        with col2:
+            if st.button("📊 Evaluate", key="evaluate_model"):
+                analyzer.run_model_evaluation()
     else:
-        st.sidebar.warning("⚠️ Using Technical Analysis")
-        if st.sidebar.button("🔄 Train ML Model"):
-            analyzer.train_model_with_2022_data()
-            st.rerun()
+        st.sidebar.warning("⚠️ No ML Model")
+        st.sidebar.info("Using Technical Analysis")
+        
+        if st.sidebar.button("🚀 Train New Model", key="train_new_model"):
+            analyzer.train_new_model()
+    
+    # Model management section
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📁 Model Management")
+    
+    available_models = analyzer.model_manager.list_available_models()
+    if available_models:
+        st.sidebar.text(f"Available models: {len(available_models)}")
+        
+        if st.sidebar.button("📋 Compare Models", key="compare_models"):
+            comparison_df = analyzer.model_manager.compare_models(available_models)
+            st.sidebar.dataframe(comparison_df, use_container_width=True)
+    else:
+        st.sidebar.text("No models found")
     
     if page == "Top Performers (Last Week)":
         st.header("🏆 Top 5 Performing Stocks (Previous Week)")
@@ -394,10 +408,22 @@ def main():
         st.header("🤖 AI-Powered Stock Predictions")
         
         # Model info
-        if hasattr(analyzer, 'model_data') and analyzer.model_data is not None:
+        if analyzer.model_predictor.is_loaded:
             st.success("🎯 Using ML Model trained on 2022 NSE data")
+            
+            # Display model performance metrics
+            if analyzer.model_info.get('metrics'):
+                ensemble_metrics = analyzer.model_info['metrics'].get('ensemble', {})
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("R² Score", f"{ensemble_metrics.get('r2', 0):.4f}")
+                with col2:
+                    st.metric("Direction Accuracy", f"{ensemble_metrics.get('direction_accuracy', 0):.4f}")
+                with col3:
+                    st.metric("Features Used", analyzer.model_info.get('feature_count', 0))
         else:
             st.info("📊 Using Technical Analysis (ML Model not available)")
+            st.warning("Train a new model for better predictions!")
         
         col1, col2 = st.columns([3, 1])
         with col2:
@@ -839,24 +865,14 @@ def main():
     elif page == "Sector Analysis":
         st.header("🏭 Sector-wise Analysis")
         
-        # Sector mapping
-        sector_mapping = {
-            'Banking': ['HDFCBANK.NS', 'ICICIBANK.NS', 'KOTAKBANK.NS', 'SBIN.NS', 'AXISBANK.NS'],
-            'IT': ['TCS.NS', 'INFY.NS', 'WIPRO.NS', 'TECHM.NS', 'HCLTECH.NS'],
-            'Pharma': ['SUNPHARMA.NS', 'DRREDDY.NS', 'CIPLA.NS', 'DIVISLAB.NS'],
-            'Auto': ['MARUTI.NS', 'TATAMOTORS.NS', 'M&M.NS', 'BAJAJ-AUTO.NS', 'EICHERMOT.NS'],
-            'FMCG': ['HINDUNILVR.NS', 'ITC.NS', 'NESTLEIND.NS', 'BRITANNIA.NS', 'TATACONSUM.NS'],
-            'Energy': ['RELIANCE.NS', 'ONGC.NS', 'BPCL.NS', 'IOC.NS'],
-            'Metals': ['TATASTEEL.NS', 'JSWSTEEL.NS', 'HINDALCO.NS', 'COALINDIA.NS']
-        }
-        
-        selected_sector = st.selectbox("Select Sector", list(sector_mapping.keys()))
+        # Use sector mapping from utilities
+        selected_sector = st.selectbox("Select Sector", list(analyzer.sector_mapping.keys()))
         
         if selected_sector:
             st.subheader(f"{selected_sector} Sector Analysis")
             
             # Get sector stocks
-            sector_stocks = sector_mapping[selected_sector]
+            sector_stocks = analyzer.sector_mapping[selected_sector]
             
             # Analyze sector performance
             sector_data = []
