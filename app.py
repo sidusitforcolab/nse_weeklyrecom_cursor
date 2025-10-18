@@ -71,6 +71,10 @@ class NSEStockAnalyzer:
         self.model_manager = ModelManager()
         self.performance_tracker = PerformanceTracker()
         self.sector_mapping = get_sector_mapping()
+        
+        # Keep legacy fetcher for backward compatibility
+        self.nse_fetcher = NSEDataFetcher()
+        
         self.load_ml_model_status()
     
     def get_stock_data(self, symbol, period="1mo"):
@@ -181,6 +185,10 @@ class NSEStockAnalyzer:
             st.error("❌ Model evaluation timed out. Please try again.")
         except Exception as e:
             st.error(f"❌ Error running evaluation: {str(e)}")
+    
+    def train_model_with_2022_data(self):
+        """Legacy method - kept for backward compatibility, redirects to new training"""
+        self.train_new_model()
     
     def predict_next_week_performance(self, symbol):
         """Enhanced prediction using ML model or fallback to technical analysis"""
