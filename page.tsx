@@ -1,7 +1,9 @@
+'use client';
+
 import React, { useState } from 'react';
 import { TrendingUp, TrendingDown, Calendar, Target, BarChart3, RefreshCw } from 'lucide-react';
 
-const StockPredictor = () => {
+export default function StockPredictor() {
   const [timeframe, setTimeframe] = useState('3months');
   const [category, setCategory] = useState('all');
   
