@@ -135,58 +135,121 @@ class NSEDataFetcher:
         """Create comprehensive technical indicators"""
         df = data.copy()
         
+        # Check if we have enough data
+        min_periods = 50  # Minimum periods needed for all indicators
+        if len(df) < min_periods:
+            print(f"Warning: Only {len(df)} periods available, some indicators may not be calculated")
+        
         # Price-based features
         df['Returns'] = df['Close'].pct_change()
         df['Log_Returns'] = np.log(df['Close'] / df['Close'].shift(1))
         df['Price_Range'] = (df['High'] - df['Low']) / df['Close']
         df['Price_Position'] = (df['Close'] - df['Low']) / (df['High'] - df['Low'])
         
-        # Moving averages
-        for window in [5, 10, 20, 50]:
-            df[f'SMA_{window}'] = df['Close'].rolling(window=window).mean()
-            df[f'EMA_{window}'] = df['Close'].ewm(span=window).mean()
+        # Moving averages (adjust windows based on data length)
+        available_windows = [w for w in [5, 10, 20, 50] if w <= len(df)]
+        for window in available_windows:
+            df[f'SMA_{window}'] = df['Close'].rolling(window=window, min_periods=1).mean()
+            df[f'EMA_{window}'] = df['Close'].ewm(span=window, min_periods=1).mean()
             df[f'Price_SMA_{window}_Ratio'] = df['Close'] / df[f'SMA_{window}']
         
         # Volatility features
-        df['Volatility_10'] = df['Returns'].rolling(window=10).std()
-        df['Volatility_20'] = df['Returns'].rolling(window=20).std()
+        if len(df) >= 10:
+            df['Volatility_10'] = df['Returns'].rolling(window=10, min_periods=1).std()
+        if len(df) >= 20:
+            df['Volatility_20'] = df['Returns'].rolling(window=20, min_periods=1).std()
         
         # Volume features
-        df['Volume_SMA_10'] = df['Volume'].rolling(window=10).mean()
-        df['Volume_Ratio'] = df['Volume'] / df['Volume_SMA_10']
+        if len(df) >= 10:
+            df['Volume_SMA_10'] = df['Volume'].rolling(window=10, min_periods=1).mean()
+            df['Volume_Ratio'] = df['Volume'] / df['Volume_SMA_10']
         
-        # Technical indicators using ta library
-        df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
-        df['MACD'] = ta.trend.MACD(df['Close']).macd()
-        df['MACD_Signal'] = ta.trend.MACD(df['Close']).macd_signal()
-        df['MACD_Histogram'] = ta.trend.MACD(df['Close']).macd_diff()
+        # Technical indicators using ta library (with error handling)
+        try:
+            if len(df) >= 14:  # RSI needs at least 14 periods
+                df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=min(14, len(df)-1)).rsi()
+        except Exception as e:
+            print(f"Error calculating RSI: {e}")
+            df['RSI'] = np.nan
+        
+        try:
+            if len(df) >= 26:  # MACD needs at least 26 periods
+                macd = ta.trend.MACD(df['Close'])
+                df['MACD'] = macd.macd()
+                df['MACD_Signal'] = macd.macd_signal()
+                df['MACD_Histogram'] = macd.macd_diff()
+        except Exception as e:
+            print(f"Error calculating MACD: {e}")
+            df['MACD'] = np.nan
+            df['MACD_Signal'] = np.nan
+            df['MACD_Histogram'] = np.nan
         
         # Bollinger Bands
-        bb = ta.volatility.BollingerBands(df['Close'])
-        df['BB_Upper'] = bb.bollinger_hband()
-        df['BB_Lower'] = bb.bollinger_lband()
-        df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['Close']
-        df['BB_Position'] = (df['Close'] - df['BB_Lower']) / (df['BB_Upper'] - df['BB_Lower'])
+        try:
+            if len(df) >= 20:
+                bb = ta.volatility.BollingerBands(df['Close'], window=min(20, len(df)-1))
+                df['BB_Upper'] = bb.bollinger_hband()
+                df['BB_Lower'] = bb.bollinger_lband()
+                df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['Close']
+                df['BB_Position'] = (df['Close'] - df['BB_Lower']) / (df['BB_Upper'] - df['BB_Lower'])
+        except Exception as e:
+            print(f"Error calculating Bollinger Bands: {e}")
+            df['BB_Upper'] = np.nan
+            df['BB_Lower'] = np.nan
+            df['BB_Width'] = np.nan
+            df['BB_Position'] = np.nan
         
         # Stochastic Oscillator
-        stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'])
-        df['Stoch_K'] = stoch.stoch()
-        df['Stoch_D'] = stoch.stoch_signal()
+        try:
+            if len(df) >= 14:
+                stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'], 
+                                                       window=min(14, len(df)-1))
+                df['Stoch_K'] = stoch.stoch()
+                df['Stoch_D'] = stoch.stoch_signal()
+        except Exception as e:
+            print(f"Error calculating Stochastic: {e}")
+            df['Stoch_K'] = np.nan
+            df['Stoch_D'] = np.nan
         
         # Williams %R
-        df['Williams_R'] = ta.momentum.WilliamsRIndicator(df['High'], df['Low'], df['Close']).williams_r()
+        try:
+            if len(df) >= 14:
+                df['Williams_R'] = ta.momentum.WilliamsRIndicator(df['High'], df['Low'], df['Close'], 
+                                                                 lbp=min(14, len(df)-1)).williams_r()
+        except Exception as e:
+            print(f"Error calculating Williams %R: {e}")
+            df['Williams_R'] = np.nan
         
         # Average True Range
-        df['ATR'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close']).average_true_range()
+        try:
+            if len(df) >= 14:
+                df['ATR'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], 
+                                                          window=min(14, len(df)-1)).average_true_range()
+        except Exception as e:
+            print(f"Error calculating ATR: {e}")
+            df['ATR'] = np.nan
         
         # Commodity Channel Index
-        df['CCI'] = ta.trend.CCIIndicator(df['High'], df['Low'], df['Close']).cci()
+        try:
+            if len(df) >= 20:
+                df['CCI'] = ta.trend.CCIIndicator(df['High'], df['Low'], df['Close'], 
+                                                 window=min(20, len(df)-1)).cci()
+        except Exception as e:
+            print(f"Error calculating CCI: {e}")
+            df['CCI'] = np.nan
         
         # Money Flow Index
-        df['MFI'] = ta.volume.MFIIndicator(df['High'], df['Low'], df['Close'], df['Volume']).money_flow_index()
+        try:
+            if len(df) >= 14:
+                df['MFI'] = ta.volume.MFIIndicator(df['High'], df['Low'], df['Close'], df['Volume'], 
+                                                  window=min(14, len(df)-1)).money_flow_index()
+        except Exception as e:
+            print(f"Error calculating MFI: {e}")
+            df['MFI'] = np.nan
         
         # Lag features
-        for lag in [1, 2, 3, 5]:
+        available_lags = [lag for lag in [1, 2, 3, 5] if lag < len(df)]
+        for lag in available_lags:
             df[f'Close_Lag_{lag}'] = df['Close'].shift(lag)
             df[f'Volume_Lag_{lag}'] = df['Volume'].shift(lag)
             df[f'Returns_Lag_{lag}'] = df['Returns'].shift(lag)
