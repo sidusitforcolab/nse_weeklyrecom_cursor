@@ -12,9 +12,14 @@ import os
 import subprocess
 import sys
 
-# Import our custom modules
+# Import our custom modules (new separated architecture)
 from model_utils import ModelPredictor, DataFetcher, ModelManager, PerformanceTracker
 from model_utils import get_nse_symbols, get_sector_mapping, format_currency, format_percentage
+
+# Import legacy modules for compatibility
+import joblib
+from nse_data_fetcher import NSEDataFetcher
+
 warnings.filterwarnings('ignore')
 
 # Page configuration
