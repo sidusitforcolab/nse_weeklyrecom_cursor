@@ -176,6 +176,56 @@ class NSEStockAnalyzer:
         self.nse_fetcher = NSEDataFetcher()
         
         self.load_ml_model_status()
+
+    def load_ml_model_status(self):
+        """Check and load ML model status"""
+        if not self.model_predictor.is_loaded:
+            st.warning("ML model not loaded. Some features may be limited.")
+            return False
+        return True
+
+    def refresh_data(self):
+        """Refresh all data sources"""
+        try:
+            self.nse_fetcher.fetch_latest_data()
+            self.model_manager.update_training_data()
+            return True
+        except Exception as e:
+            st.error(f"Error refreshing data: {str(e)}")
+            return False
+
+    def get_model_performance(self):
+        """Get current model performance metrics"""
+        try:
+            metrics = self.model_manager.get_performance_metrics()
+            return metrics
+        except Exception as e:
+            st.error(f"Error getting model performance: {str(e)}")
+            return None
+
+    def retrain_model(self):
+        """Retrain the model with latest data"""
+        try:
+            success = self.model_manager.retrain_model()
+            if success:
+                self.model_predictor.load_model()  # Reload the new model
+            return success
+        except Exception as e:
+            st.error(f"Error retraining model: {str(e)}")
+            return False
+
+    def fetch_nse_data(self):
+        """Fetch fresh NSE data"""
+        try:
+            self.nse_fetcher.fetch_nse_data()
+            return True
+        except Exception as e:
+            st.error(f"Error fetching NSE data: {str(e)}")
+            return False
+
+    def get_data_freshness(self):
+        """Get data last update timestamp"""
+        return self.nse_fetcher.get_last_update_time()
     
     def get_stock_data(self, symbol, period="1mo"):
         """Fetch stock data using DataFetcher utility"""
@@ -1636,6 +1686,57 @@ def main():
                 analyzer.nse_symbols,
                 format_func=lambda x: x.replace('.NS', '')
             )
+            
+            # Model Management Section
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("🛠️ Model Management")
+            
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                if st.button("Refresh Data", key="refresh_data"):
+                    with st.spinner("Fetching latest NSE data..."):
+                        analyzer.nse_fetcher.fetch_latest_data()
+                        st.success("Data refreshed successfully!")
+                        
+                if st.button("Model Performance", key="model_perf"):
+                    st.subheader("Model Performance Metrics")
+                    perf_metrics = analyzer.model_manager.get_performance_metrics()
+                    
+                    metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+                    with metrics_col1:
+                        st.metric("Accuracy", f"{perf_metrics['accuracy']:.2%}")
+                    with metrics_col2:
+                        st.metric("F1 Score", f"{perf_metrics['f1_score']:.2%}")
+                    with metrics_col3:
+                        st.metric("ROC AUC", f"{perf_metrics['roc_auc']:.2%}")
+                    
+                    # Show confusion matrix
+                    st.plotly_chart(analyzer.model_manager.plot_confusion_matrix())
+                    
+                    # Show ROC curve
+                    st.plotly_chart(analyzer.model_manager.plot_roc_curve())
+                    
+                    # Feature importance
+                    st.subheader("Feature Importance")
+                    st.plotly_chart(analyzer.model_manager.plot_feature_importance())
+            
+            with col2:
+                if st.button("Retrain Model", key="retrain"):
+                    with st.spinner("Retraining model with latest data..."):
+                        success = analyzer.model_manager.retrain_model()
+                        if success:
+                            st.success("Model retrained successfully!")
+                        else:
+                            st.error("Model retraining failed. Check logs.")
+                
+                if st.button("Fetch NSE Data", key="fetch_nse"):
+                    with st.spinner("Fetching NSE data..."):
+                        analyzer.nse_fetcher.fetch_nse_data()
+                        st.success("NSE data fetched successfully!")
+            
+            # Data freshness indicator
+            last_update = analyzer.nse_fetcher.get_last_update_time()
+            st.sidebar.info(f"Data Last Updated: {last_update}")
             
             if st.button("Generate Prediction"):
                 with st.spinner("Analyzing market data and generating predictions..."):
