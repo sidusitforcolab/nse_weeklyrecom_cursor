@@ -48,6 +48,112 @@ st.markdown("""
     }
     .positive-return {
         color: #00b050;
+    }
+    .negative-return {
+        color: #ff0000;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Initialize session state if not exists
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = True
+    st.session_state.selected_stock = None
+    st.session_state.portfolio = []
+    st.session_state.analyzer = None
+
+# Main title
+st.markdown("<h1 class='main-header'>NSE Stock Analysis & Prediction</h1>", unsafe_allow_html=True)
+
+# Initialize analyzer if not in session state
+if st.session_state.analyzer is None:
+    nse_fetcher = NSEDataFetcher()
+    st.session_state.analyzer = ModelPredictor(nse_fetcher)
+
+# Sidebar
+with st.sidebar:
+    st.header("📊 Stock Selection")
+    selected_stock = st.selectbox(
+        "Select a Stock",
+        options=get_nse_symbols(),
+        key="stock_selector"
+    )
+    
+    # Quick Actions Section
+    st.markdown("---")
+    st.subheader("⚡ Quick Actions")
+    quick_action = st.selectbox(
+        "Select Action",
+        ["None", "Top Gainers", "Top Losers", "Most Active", "52 Week High/Low", "Custom Screener"]
+    )
+    
+    # Portfolio Section
+    st.markdown("---")
+    st.subheader("📈 Portfolio")
+    if st.button("Manage Portfolio"):
+        st.session_state.show_portfolio = True
+    
+    # Model Management
+    st.markdown("---")
+    st.subheader("🛠️ Model Management")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Refresh Data"):
+            with st.spinner("Fetching latest data..."):
+                st.session_state.analyzer.refresh_data()
+                st.success("Data refreshed!")
+    with col2:
+        if st.button("Model Performance"):
+            st.session_state.show_performance = True
+
+# Main Content Area
+if selected_stock:
+    st.subheader(f"📊 Analysis for {selected_stock}")
+    
+    # Stock Performance Metrics
+    metrics_col1, metrics_col2, metrics_col3, metrics_col4 = st.columns(4)
+    with metrics_col1:
+        current_price = st.session_state.analyzer.get_current_price(selected_stock)
+        st.metric("Current Price", f"₹{current_price:,.2f}")
+    with metrics_col2:
+        day_change = st.session_state.analyzer.get_day_change(selected_stock)
+        st.metric("Day Change", f"{day_change:+.2f}%")
+    with metrics_col3:
+        volume = st.session_state.analyzer.get_volume(selected_stock)
+        st.metric("Volume", f"{volume:,}")
+    with metrics_col4:
+        prediction = st.session_state.analyzer.get_prediction(selected_stock)
+        st.metric("Predicted Movement", f"{prediction:+.2f}%")
+    
+    # Charts
+    st.subheader("📈 Price History")
+    timeframe = st.selectbox("Timeframe", ["1M", "3M", "6M", "1Y", "2Y", "5Y"])
+    st.session_state.analyzer.plot_stock_history(selected_stock, timeframe)
+
+# Quick Actions Content
+if quick_action != "None":
+    st.subheader(f"📊 {quick_action}")
+    with st.spinner(f"Loading {quick_action.lower()}..."):
+        if quick_action == "Top Gainers":
+            st.session_state.analyzer.show_top_gainers()
+        elif quick_action == "Top Losers":
+            st.session_state.analyzer.show_top_losers()
+        elif quick_action == "Most Active":
+            st.session_state.analyzer.show_most_active()
+        elif quick_action == "52 Week High/Low":
+            st.session_state.analyzer.show_52_week_high_low()
+        elif quick_action == "Custom Screener":
+            st.session_state.analyzer.show_screener()
+
+# Portfolio Management
+if getattr(st.session_state, 'show_portfolio', False):
+    st.subheader("💼 Portfolio Management")
+    st.session_state.analyzer.show_portfolio()
+
+# Model Performance
+if getattr(st.session_state, 'show_performance', False):
+    st.subheader("📊 Model Performance Metrics")
+    st.session_state.analyzer.show_model_performance()
         font-weight: bold;
     }
     .negative-return {
