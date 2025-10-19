@@ -1687,6 +1687,88 @@ def main():
                 format_func=lambda x: x.replace('.NS', '')
             )
             
+            # Quick Actions Section
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("⚡ Quick Actions")
+            
+            quick_action = st.sidebar.selectbox(
+                "Quick Action",
+                ["None", "Top Gainers", "Top Losers", "Most Active", "52 Week High/Low", "Custom Screener"]
+            )
+            
+            if quick_action != "None":
+                st.subheader(f"📊 {quick_action}")
+                with st.spinner(f"Fetching {quick_action.lower()}..."):
+                    if quick_action == "Top Gainers":
+                        data = analyzer.get_top_gainers()
+                        analyzer.plot_movement_table("Top Gainers", data)
+                    elif quick_action == "Top Losers":
+                        data = analyzer.get_top_losers()
+                        analyzer.plot_movement_table("Top Losers", data)
+                    elif quick_action == "Most Active":
+                        data = analyzer.get_most_active()
+                        analyzer.plot_volume_table("Most Active Stocks", data)
+                    elif quick_action == "52 Week High/Low":
+                        highs, lows = analyzer.get_52_week_high_low()
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            analyzer.plot_movement_table("52 Week Highs", highs)
+                        with col2:
+                            analyzer.plot_movement_table("52 Week Lows", lows)
+                    elif quick_action == "Custom Screener":
+                        st.subheader("🔍 Custom Stock Screener")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            min_price = st.number_input("Min Price", value=0.0, step=10.0)
+                            max_pe = st.number_input("Max P/E Ratio", value=50.0, step=5.0)
+                        with col2:
+                            min_volume = st.number_input("Min Volume (Millions)", value=1.0, step=0.5)
+                            min_market_cap = st.number_input("Min Market Cap (Cr)", value=1000.0, step=100.0)
+                        
+                        if st.button("Run Screen"):
+                            results = analyzer.screen_stocks(
+                                min_price=min_price,
+                                min_volume=min_volume * 1e6,
+                                max_pe=max_pe,
+                                min_market_cap=min_market_cap
+                            )
+                            analyzer.plot_screener_results(results)
+            
+            # Portfolio Tracking Section
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("📈 Portfolio Tracking")
+            
+            # Add/Edit Portfolio
+            if st.sidebar.button("Manage Portfolio"):
+                st.subheader("💼 Portfolio Management")
+                
+                # Portfolio Summary
+                portfolio = analyzer.get_portfolio()
+                if portfolio is not None:
+                    analyzer.show_portfolio_summary(portfolio)
+                    
+                    # Portfolio Performance Chart
+                    st.subheader("Portfolio Performance")
+                    analyzer.plot_portfolio_performance(portfolio)
+                    
+                    # Risk Analysis
+                    st.subheader("Risk Analysis")
+                    analyzer.show_portfolio_risk_metrics(portfolio)
+                
+                # Add New Position
+                st.subheader("Add Position")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    symbol = st.selectbox("Stock", analyzer.nse_symbols)
+                with col2:
+                    quantity = st.number_input("Quantity", min_value=1)
+                with col3:
+                    entry_price = st.number_input("Entry Price", min_value=0.01)
+                
+                if st.button("Add to Portfolio"):
+                    analyzer.add_to_portfolio(symbol, quantity, entry_price)
+                    st.success(f"Added {symbol} to portfolio!")
+            
             # Model Management Section
             st.sidebar.markdown("---")
             st.sidebar.subheader("🛠️ Model Management")
