@@ -1612,15 +1612,107 @@ def main():
     st.sidebar.title("Navigation")
     app_mode = st.sidebar.selectbox(
         "Choose Mode",
-        ["Stock Analysis", "Financial Independence Calculator"]
+        ["Stock Analysis & Predictions", "Financial Independence Calculator"]
     )
     
-    if app_mode == "Stock Analysis":
+    if app_mode == "Stock Analysis & Predictions":
         st.sidebar.title("Analysis Options")
         analysis_type = st.sidebar.selectbox(
             "Choose Analysis Type",
-            ["2022 Performance", "Monthly Trends", "Volatility Analysis", "Correlation Analysis"]
+            ["Live Market Analysis", "ML Predictions", "2022 Performance", "Monthly Trends", "Volatility Analysis", "Correlation Analysis"]
         )
+        
+        if analysis_type == "ML Predictions":
+            st.subheader("🤖 Machine Learning Stock Predictions")
+            
+            # Model status check
+            if not analyzer.model_predictor.is_loaded:
+                st.error("ML Model not loaded. Please check model files.")
+                return
+                
+            # Stock selection for prediction
+            selected_stock = st.selectbox(
+                "Select Stock for Prediction",
+                analyzer.nse_symbols,
+                format_func=lambda x: x.replace('.NS', '')
+            )
+            
+            if st.button("Generate Prediction"):
+                with st.spinner("Analyzing market data and generating predictions..."):
+                    # Get historical data
+                    hist_data = analyzer.get_stock_data(selected_stock, period="6mo")
+                    if hist_data is not None:
+                        # Generate predictions
+                        predictions = analyzer.model_predictor.predict(hist_data)
+                        
+                        # Display results
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.metric(
+                                "Predicted Movement",
+                                "⬆️ Upward" if predictions['direction'] > 0.5 else "⬇️ Downward",
+                                f"Confidence: {predictions['confidence']:.1%}"
+                            )
+                        
+                        with col2:
+                            st.metric(
+                                "Price Target (1 Week)",
+                                f"₹{predictions['price_target']:.2f}",
+                                f"{predictions['expected_return']:.1%}"
+                            )
+                        
+                        # Show prediction visualization
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=hist_data.index,
+                            y=hist_data['Close'],
+                            name="Historical",
+                            line=dict(color='blue')
+                        ))
+                        
+                        # Add prediction range
+                        fig.add_trace(go.Scatter(
+                            x=[hist_data.index[-1], hist_data.index[-1] + pd.Timedelta(days=7)],
+                            y=[hist_data['Close'].iloc[-1], predictions['price_target']],
+                            name="Prediction",
+                            line=dict(color='red', dash='dash')
+                        ))
+                        
+                        fig.update_layout(
+                            title=f"Price Prediction for {selected_stock}",
+                            xaxis_title="Date",
+                            yaxis_title="Price (₹)",
+                            showlegend=True
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Show additional analysis
+                        st.subheader("📊 Technical Analysis")
+                        
+                        metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+                        
+                        with metrics_col1:
+                            st.metric(
+                                "RSI (14)",
+                                f"{predictions['technical_indicators']['RSI']:.1f}",
+                                "Overbought" if predictions['technical_indicators']['RSI'] > 70 else "Oversold" if predictions['technical_indicators']['RSI'] < 30 else "Neutral"
+                            )
+                        
+                        with metrics_col2:
+                            st.metric(
+                                "MACD Signal",
+                                predictions['technical_indicators']['MACD_Signal'],
+                                predictions['technical_indicators']['MACD_Strength']
+                            )
+                        
+                        with metrics_col3:
+                            st.metric(
+                                "Volume Trend",
+                                predictions['technical_indicators']['Volume_Trend'],
+                                predictions['technical_indicators']['Volume_Change']
+                            )
         
         # Run stock analysis based on selected type
         if analysis_type == "2022 Performance":
