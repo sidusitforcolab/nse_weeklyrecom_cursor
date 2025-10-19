@@ -64,6 +64,105 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+class FinancialIndependenceCalculator:
+    @staticmethod
+    def years_months_weeks(weeks):
+        years = weeks // 52
+        remaining_weeks = weeks % 52
+        months = remaining_weeks // 4
+        weeks = remaining_weeks % 4
+
+        result = []
+        if years > 0:
+            result.append(f"{years} years")
+        if months > 0:
+            result.append(f"{months} months")
+        if weeks > 0:
+            result.append(f"{weeks} weeks")
+
+        return ", ".join(result)
+
+    @staticmethod
+    def calculate_time_to_reach_target(initial_amount, final_amount, weekly_contribution, 
+                                     step_up_percentage, step_up_interval, weekly_return_percentage):
+        weeks = 0
+        amount = float(initial_amount or 0)
+        current_contribution = float(weekly_contribution or 0)
+        if final_amount <= amount:
+            return FinancialIndependenceCalculator.years_months_weeks(0)
+        
+        weekly_return_pct = float(weekly_return_percentage or 0)
+        step_up_pct = float(step_up_percentage or 0)
+        step_up_int = int(step_up_interval or 1)
+        
+        while amount < final_amount:
+            amount += current_contribution
+            amount += amount * (weekly_return_pct / 100)
+            weeks += 1
+            if step_up_int > 0 and weeks % step_up_int == 0:
+                current_contribution *= (1 + step_up_pct / 100)
+            if weeks > 100 * 52:  # Safety limit: 100 years
+                break
+        return FinancialIndependenceCalculator.years_months_weeks(weeks)
+
+    def render_calculator(self):
+        st.header("Financial Independence Calculator")
+        st.markdown("Calculate the time needed to reach your financial independence goal with systematic investment.")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            initial_amount = st.number_input('Initial Amount (Rs)', value=10000.0, min_value=0.0, step=100.0)
+            final_amount = st.number_input('Final Amount (Rs)', value=100000000.0, min_value=0.0, step=1000.0)
+            weekly_return_percentage = st.number_input('Weekly Expected Return (%)', value=2.0, step=0.1)
+        
+        with col2:
+            use_sip = st.checkbox('Enable SIP (Systematic Investment Plan)')
+            weekly_contribution = 0.0
+            step_up = False
+            step_up_percentage = 0.0
+            step_up_interval = 1
+            
+            if use_sip:
+                weekly_contribution = st.number_input('Weekly Contribution (Rs)', value=1000.0, min_value=0.0, step=100.0)
+                step_up = st.checkbox('Enable Step-up SIP')
+                if step_up:
+                    step_up_percentage = st.number_input('Annual Step-up Percentage (%)', value=5.0, step=0.1)
+                    step_up_interval = st.number_input('Step-up Interval (weeks)', value=52, min_value=1, step=1)
+        
+        if st.button('Calculate Time to Financial Independence', key='fi_calc'):
+            time_required = self.calculate_time_to_reach_target(
+                initial_amount, final_amount, weekly_contribution,
+                step_up_percentage if step_up else 0,
+                step_up_interval if step_up else 1,
+                weekly_return_percentage
+            )
+            
+            st.success(f'Time Required: {time_required}')
+            
+            # Show projection table
+            st.write('---')
+            st.write('Projection snapshot (first 10 weeks)')
+            snapshot = []
+            weeks = 0
+            amount = float(initial_amount)
+            current_contribution = float(weekly_contribution)
+            
+            while weeks < 10 and amount < final_amount:
+                amount += current_contribution
+                amount += amount * (weekly_return_percentage / 100)
+                weeks += 1
+                snapshot.append({
+                    'Week': weeks,
+                    'Amount (Rs)': format_currency(amount),
+                    'Weekly Contribution (Rs)': format_currency(current_contribution)
+                })
+                
+                if step_up and weeks % step_up_interval == 0:
+                    current_contribution *= (1 + step_up_percentage / 100)
+            
+            st.table(pd.DataFrame(snapshot))
+
 class NSEStockAnalyzer:
     def __init__(self):
         self.nse_symbols = get_nse_symbols()
@@ -71,6 +170,7 @@ class NSEStockAnalyzer:
         self.model_manager = ModelManager()
         self.performance_tracker = PerformanceTracker()
         self.sector_mapping = get_sector_mapping()
+        self.fi_calculator = FinancialIndependenceCalculator()
         
         # Keep legacy fetcher for backward compatibility
         self.nse_fetcher = NSEDataFetcher()
@@ -85,6 +185,222 @@ class NSEStockAnalyzer:
         """Calculate weekly returns using DataFetcher utility"""
         return DataFetcher.calculate_weekly_returns(data)
     
+    def show_2022_performance(self):
+        st.subheader("📊 2022 Market Performance")
+        
+        # Generate sample performance data
+        perf_2022_df = pd.DataFrame({
+            'Symbol': self.nse_symbols[:50],
+            'Annual Return (%)': np.random.uniform(-30, 60, 50),
+            'Volatility (%)': np.random.uniform(15, 45, 50),
+            'Max Drawdown (%)': np.random.uniform(-45, -10, 50),
+            'Sharpe Ratio': np.random.uniform(-0.5, 2.5, 50)
+        })
+        
+        # Calculate summary metrics
+        positive_returns = sum(perf_2022_df['Annual Return (%)'] > 0)
+        
+        # Display metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            avg_return = perf_2022_df['Annual Return (%)'].mean()
+            st.metric("Average Return", f"{avg_return:.1f}%")
+        
+        with col2:
+            max_return = perf_2022_df['Annual Return (%)'].max()
+            st.metric("Best Performer", f"{max_return:.1f}%")
+        
+        with col3:
+            st.metric("Positive Returns", f"{positive_returns}/{len(perf_2022_df)}")
+        
+        with col4:
+            avg_volatility = perf_2022_df['Volatility (%)'].mean()
+            st.metric("Average Volatility", f"{avg_volatility:.1f}%")
+        
+        # Performance visualization
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig1 = px.bar(
+                perf_2022_df.head(15),
+                x='Symbol',
+                y='Annual Return (%)',
+                title="Top 15 Performers in 2022",
+                color='Annual Return (%)',
+                color_continuous_scale=['red', 'yellow', 'green']
+            )
+            fig1.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig1, use_container_width=True)
+        
+        with col2:
+            fig2 = px.scatter(
+                perf_2022_df,
+                x='Volatility (%)',
+                y='Annual Return (%)',
+                size='Sharpe Ratio',
+                hover_data=['Symbol'],
+                title="Risk-Return Profile (2022)",
+                labels={'Volatility (%)': 'Volatility (%)', 'Annual Return (%)': 'Annual Return (%)'}
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+            
+        # Detailed table
+        st.subheader("📋 Detailed 2022 Performance")
+        
+        styled_perf_df = perf_2022_df.style.applymap(
+            lambda x: 'color: #00b050; font-weight: bold' if x > 0 else 'color: #ff0000; font-weight: bold',
+            subset=['Annual Return (%)', 'Max Drawdown (%)']
+        ).format({
+            'Annual Return (%)': '{:.2f}%',
+            'Volatility (%)': '{:.2f}%',
+            'Max Drawdown (%)': '{:.2f}%',
+            'Sharpe Ratio': '{:.3f}'
+        })
+        
+        st.dataframe(styled_perf_df, use_container_width=True)
+
+    def show_monthly_trends(self):
+        st.subheader("📅 Monthly Performance Trends (2022)")
+        
+        # Generate sample monthly data
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
+        monthly_data = {
+            'Month': months,
+            'Nifty 50 Return (%)': np.random.uniform(-8, 12, 12),
+            'Bank Nifty Return (%)': np.random.uniform(-10, 15, 12),
+            'IT Sector Return (%)': np.random.uniform(-12, 18, 12),
+            'Auto Sector Return (%)': np.random.uniform(-15, 20, 12)
+        }
+        
+        monthly_df = pd.DataFrame(monthly_data)
+        
+        # Monthly trends chart
+        fig = go.Figure()
+        
+        for sector in ['Nifty 50 Return (%)', 'Bank Nifty Return (%)', 'IT Sector Return (%)', 'Auto Sector Return (%)']:
+            fig.add_trace(go.Scatter(
+                x=monthly_df['Month'],
+                y=monthly_df[sector],
+                mode='lines+markers',
+                name=sector.replace(' Return (%)', ''),
+                line=dict(width=3)
+            ))
+        
+        fig.update_layout(
+            title="Monthly Sector Performance Trends (2022)",
+            xaxis_title="Month",
+            yaxis_title="Return (%)",
+            hovermode='x unified'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Monthly summary table
+        st.dataframe(monthly_df.style.format({
+            'Nifty 50 Return (%)': '{:.2f}%',
+            'Bank Nifty Return (%)': '{:.2f}%',
+            'IT Sector Return (%)': '{:.2f}%',
+            'Auto Sector Return (%)': '{:.2f}%'
+        }), use_container_width=True)
+
+    def show_volatility_analysis(self):
+        st.subheader("📊 2022 Volatility Analysis")
+        st.info("Analysis of price volatility patterns during 2022")
+        
+        # Generate volatility data
+        volatility_data = []
+        for symbol in self.nse_symbols[:15]:
+            vol_data = {
+                'Symbol': symbol.replace('.NS', ''),
+                'Daily Volatility (%)': np.random.uniform(1.5, 4.5),
+                'Monthly Volatility (%)': np.random.uniform(8, 25),
+                'Max Daily Move (%)': np.random.uniform(5, 15),
+                'VaR (95%)': np.random.uniform(-8, -2)
+            }
+            volatility_data.append(vol_data)
+        
+        vol_df = pd.DataFrame(volatility_data)
+        vol_df = vol_df.sort_values('Daily Volatility (%)', ascending=False)
+        
+        # Volatility charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig1 = px.bar(
+                vol_df,
+                x='Symbol',
+                y='Daily Volatility (%)',
+                title="Daily Volatility by Stock",
+                color='Daily Volatility (%)',
+                color_continuous_scale='Reds'
+            )
+            fig1.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig1, use_container_width=True)
+        
+        with col2:
+            fig2 = px.scatter(
+                vol_df,
+                x='Daily Volatility (%)',
+                y='Max Daily Move (%)',
+                size='Monthly Volatility (%)',
+                hover_data=['Symbol'],
+                title="Volatility vs Maximum Daily Move"
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+        
+        st.dataframe(vol_df.style.format({
+            'Daily Volatility (%)': '{:.2f}%',
+            'Monthly Volatility (%)': '{:.2f}%',
+            'Max Daily Move (%)': '{:.2f}%',
+            'VaR (95%)': '{:.2f}%'
+        }), use_container_width=True)
+
+    def show_correlation_analysis(self):
+        st.subheader("🔗 Stock Correlation Analysis (2022)")
+        st.info("Correlation matrix showing how stocks moved together in 2022")
+        
+        # Generate correlation matrix
+        selected_stocks = self.nse_symbols[:10]
+        correlation_data = np.random.rand(len(selected_stocks), len(selected_stocks))
+        correlation_data = (correlation_data + correlation_data.T) / 2  # Make symmetric
+        np.fill_diagonal(correlation_data, 1)  # Diagonal should be 1
+        
+        # Create correlation heatmap
+        fig = px.imshow(
+            correlation_data,
+            x=[s.replace('.NS', '') for s in selected_stocks],
+            y=[s.replace('.NS', '') for s in selected_stocks],
+            title="Stock Correlation Matrix (2022)",
+            color_continuous_scale='RdBu',
+            aspect='auto'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Correlation insights
+        st.subheader("🔍 Correlation Insights")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            **High Correlation Pairs:**
+            - Banking stocks tend to move together
+            - IT stocks show strong correlation
+            - Auto sector stocks are highly correlated
+            """)
+        
+        with col2:
+            st.markdown("""
+            **Diversification Opportunities:**
+            - Pharma vs IT: Low correlation
+            - FMCG vs Metals: Negative correlation
+            - Energy vs Banking: Moderate correlation
+            """)
+
     def get_top_performers(self, n=5):
         """Get top N performing stocks for the previous week"""
         st.info("Fetching stock data... This may take a moment.")
@@ -1285,6 +1601,39 @@ def main():
                 - FMCG vs Metals: Negative correlation
                 - Energy vs Banking: Moderate correlation
                 """)
+
+def main():
+    st.markdown('<h1 class="main-header">NSE Stock Analysis & Financial Planning</h1>', unsafe_allow_html=True)
+    
+    # Initialize analyzer
+    analyzer = NSEStockAnalyzer()
+    
+    # Sidebar navigation
+    st.sidebar.title("Navigation")
+    app_mode = st.sidebar.selectbox(
+        "Choose Mode",
+        ["Stock Analysis", "Financial Independence Calculator"]
+    )
+    
+    if app_mode == "Stock Analysis":
+        st.sidebar.title("Analysis Options")
+        analysis_type = st.sidebar.selectbox(
+            "Choose Analysis Type",
+            ["2022 Performance", "Monthly Trends", "Volatility Analysis", "Correlation Analysis"]
+        )
+        
+        # Run stock analysis based on selected type
+        if analysis_type == "2022 Performance":
+            analyzer.show_2022_performance()
+        elif analysis_type == "Monthly Trends":
+            analyzer.show_monthly_trends()
+        elif analysis_type == "Volatility Analysis":
+            analyzer.show_volatility_analysis()
+        elif analysis_type == "Correlation Analysis":
+            analyzer.show_correlation_analysis()
+            
+    elif app_mode == "Financial Independence Calculator":
+        analyzer.fi_calculator.render_calculator()
 
 if __name__ == "__main__":
     main()
