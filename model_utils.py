@@ -185,6 +185,29 @@ class ModelPredictor:
         
         return predictions
 
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Return the latest close price for a given symbol.
+
+        Tries to use DataFetcher.get_stock_data first; if that fails, it will
+        attempt a minimal yfinance fetch as a fallback.
+        """
+        try:
+            # Try DataFetcher utility first
+            data = DataFetcher.get_stock_data(symbol, period="5d")
+            if data is not None and not data.empty:
+                return float(data['Close'].iloc[-1])
+
+            # Fallback: yfinance direct
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="5d")
+            if hist is not None and not hist.empty:
+                return float(hist['Close'].iloc[-1])
+
+            return None
+        except Exception:
+            return None
+
 class DataFetcher:
     """
     Utility class for fetching stock data
