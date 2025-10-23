@@ -140,21 +140,7 @@ if getattr(st.session_state, 'show_portfolio', False):
 if getattr(st.session_state, 'show_performance', False):
     st.subheader("📊 Model Performance Metrics")
     st.session_state.analyzer.show_model_performance()
-        font-weight: bold;
-    }
-    .negative-return {
-        color: #ff0000;
-        font-weight: bold;
-    }
-    .prediction-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1.5rem;
-        border-radius: 1rem;
-        margin: 1rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
+
 
 class FinancialIndependenceCalculator:
     @staticmethod
